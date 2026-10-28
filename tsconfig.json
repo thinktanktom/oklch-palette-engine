@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    /* The source imports siblings as './oklch.ts', with the extension, because
+       that is what plain Node ESM requires and running the tests without a
+       build step is the point. TypeScript only permits that spelling when it is
+       not emitting, which suits a repo that never builds. */
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+
+    /* Node strips types rather than compiling them, so anything that needs a
+       runtime representation -- enum, namespace, parameter properties -- would
+       fail at execution rather than here. This makes tsc reject it first. */
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts"]
+}

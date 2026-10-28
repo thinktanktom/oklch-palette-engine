@@ -1,0 +1,24 @@
+{
+  "name": "oklch-palette-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A seeded palette generator in OKLCH. Solves for contrast by bisection and validates against a calibrated gate table. Extracted from a personal site as a snapshot, not maintained as a package.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test \"src/__tests__/*.test.ts\"",
+    "test:sweep": "PALETTE_SWEEP_SEEDS=20000 node --experimental-strip-types --test \"src/__tests__/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  }
+}
