@@ -30,16 +30,13 @@ reproducible — but I didn't type all of it, and the extensive commenting style
 throughout is a product of how it was built. Take the evidence at face value and
 the authorship with that context.
 
-So: this is a thing I made to understand, not a library I'm offering you to
-depend on. The difference shows up everywhere below.
-
 ---
 
 ## The calibration story
 
-This is the part worth reading. The constants in here are not taste — they were
-each measured off a palette that already existed and already worked, and the
-fixtures in `src/__tests__/fixtures.ts` are the evidence, not decoration.
+The constants in here are not taste — they were each measured off a palette that 
+already existed and already worked, and the fixtures in `src/__tests__/fixtures.ts` 
+are the evidence, not decoration.
 
 The site had three hand-designed palettes over its life: an electric-yellow one,
 and two achromatic ones at opposite ends (accent pure `#ffffff` and pure
