@@ -1,16 +1,18 @@
 # oklch-palette-engine
 
-A seeded palette generator. One 32-bit integer in, nine sRGB tokens out, every
-informational pair solved to a contrast target rather than sampled and hoped
-over. Written in OKLCH, no dependencies, ~610 lines.
+A machine that invents colour schemes for a website. You give it one number,
+the "seed", and it gives back nine named colours: background, text, borders, a
+highlight colour and so on. The same number always produces the same scheme.
+
+Its main promise is that every scheme is readable. Text is always dark or light
+enough against its background.
 
 ```
 npm test        # 43 tests, nothing to install
 ```
 
-It was extracted from my personal site, where it powers a "roll me a theme"
-button. This repo is a **snapshot of the pure half** — see
-[What stayed behind](#what-stayed-behind) and [This is a snapshot](#this-is-a-snapshot-not-a-package).
+It came out of my personal site, where it powers a "roll me a theme" button.
+This repo is a frozen copy of the half that only does maths.
 
 ---
 
@@ -18,190 +20,141 @@ button. This repo is a **snapshot of the pure half** — see
 
 Honest version: I wanted to pull it out and poke at it. The thing had grown
 inside a site over a few weeks, and it had reached the point where I could tell
-you what every constant did but not really *why the shape of it was right* —
-which is an uncomfortable thing to not know about code you wrote. Lifting it
-somewhere with no Next.js, no stylesheet and no DOM around it was the way to
-find out what was actually load-bearing and what was just scar tissue from the
-site it grew in.
+you what every constant did but not really *why the shape of it was right*. 
 
-It is also, and I'd rather say so plainly than have you guess: **AI-assisted
-work.** I drove it, I made the calls, and the measurements below are real and
-reproducible — but I didn't type all of it, and the extensive commenting style
-throughout is a product of how it was built. Take the evidence at face value and
-the authorship with that context.
+
+This is the result of it being: **AI-assisted work.** I drove it, I made the 
+calls, and the measurements below are real and reproducible.
 
 ---
 
-## The calibration story
+## How the rules were set
 
-The constants in here are not taste — they were each measured off a palette that 
-already existed and already worked, and the fixtures in `src/__tests__/fixtures.ts` 
-are the evidence, not decoration.
+The engine works by rules, such as "text must contrast with the background at
+least this much" or "the highlight colour must be at least this vivid". I didn't
+pick those numbers by taste. I had AI measure them off colour schemes I had 
+already designed and knew worked.
 
-The site had three hand-designed palettes over its life: an electric-yellow one,
-and two achromatic ones at opposite ends (accent pure `#ffffff` and pure
-`#000000`). All three are kept as fixtures, and `calibration.test.ts` runs all
-three through the same gate table the generator targets. **If a hand-designed
-palette fails a gate, the gate is wrong — not the palette.** That inversion is
-the whole method.
+There were three: a vivid electric yellow, an all-white scheme for dark mode,
+and an all-black scheme for light mode. All three are saved in
+`src/__tests__/fixtures.ts`, and `calibration.test.ts` runs them through the
+same rules the engine uses. **If a good design fails a rule, the AI treats the rule as
+wrong, not the design.**
 
-Two constants came directly out of that, and both would look arbitrary without it:
+Two rules came straight out of it.
 
-**`CHROMA_CEIL = 0.24`, set just above the yellow.** That colour was `#e8ff00`,
-and measuring it in OKLCH put it at `C/maxC = 1.00` for its hue — sitting
-*exactly* on the sRGB gamut edge. So the rule the generator encodes is "as vivid
-as the gamut allows", and the gamut itself is the cap. A ceiling tighter than
-that would have rejected a colour that demonstrably worked in production for
-months.
+**How vivid a colour may be (`CHROMA_CEIL = 0.24`).** Ordinary screens can only
+show colours up to a certain vividness. The yellow (`#e8ff00`) sat exactly at
+that limit: as vivid as a yellow on a normal screen can get. So the engine's
+rule is simply "as vivid as the screen allows", and I set the cap just above the
+yellow. A tighter cap would have rejected a colour that worked on the live site
+for months.
 
-**The accent rule is a chroma floor, not a contrast gate.** The obvious way to
-say "the accent must not collapse into the body text" is to require contrast
-between them. That same yellow measures **1.02:1 against its own off-white
-text** — near-identical in luminance, obviously distinct to look at, because the
-distinction is carried by *hue*. A luminance test there would have rejected the
-brand's own palette. So `CHROMA_FLOOR = 0.055` asks for chromaticity instead,
-and never for luminance separation.
+**The highlight must be colourful, not just different in brightness
+(`CHROMA_FLOOR = 0.055`).** The obvious way to stop the highlight colour
+blending into the body text is to demand a brightness difference between them.
+But the yellow and its off-white text are almost identical in brightness
+(1.02:1, where 1:1 means identical). They're still obviously different to the
+eye, because one is yellow. A brightness rule would have rejected my own
+design. So the rule asks for vividness instead.
 
-There's a consequence I like, because it shows the rule is scoped rather than
-universal: the achromatic palette that eventually shipped as the site's default
-**fails the chroma floor on purpose**, and the test asserts that it fails. It
-solves the same problem a different way — by taking the pure endpoint, 21:1
-against its own background. The floor exists so a *generated* accent can't land
-on a near-text grey. It is a generator-only rule, and `validate()` takes an
-option to turn it off for exactly that reason.
+I like a side effect of this. The all-white and all-black schemes have no colour
+at all, so they **fail the vividness rule on purpose**, and the test checks that
+they fail. They stay readable another way: pure white on black is the strongest
+contrast possible (21:1). The rule only exists so a *generated* highlight can't
+land on a grey that looks like the text. `validate()` lets you switch it off for
+hand-made schemes for exactly that reason.
 
 ---
 
-## Three design choices that earn their keep
+## Three choices that matter
 
-**OKLCH, not HSL.** OKLCH is perceptually uniform, so one lightness ramp looks
-like the same ramp at every hue — in HSL, `L: 50%` is a very different apparent
-brightness at yellow than at blue, and a generator built on it produces palettes
-that are "correct" and visibly inconsistent. Reaching the gamut is done by
-reducing chroma along the hue ray; clipping RGB channels instead shifts the hue,
-which is how you end up with a "blue" that arrives green.
+**Describing colour the way eyes see it.** There are several ways to describe a
+colour with numbers. The common one, HSL, has a flaw: a yellow and a blue at the
+"same" brightness setting don't look equally bright. The engine uses OKLCH
+instead, which is designed so that equal numbers look equal. For a generator,
+that decides whether every scheme looks balanced or some come out lopsided.
 
-**Contrast is solved, not sampled.** `solveL` and `solveNear` bisect to the
-target. The tempting alternative — generate a candidate, test it, retry on
-failure — has two problems that are easy to miss until they bite: it can fail to
-terminate when no candidate in the region satisfies the constraint, and more
-insidiously it **biases the hue distribution** toward whatever hues happen to
-pass, so your "random" palettes quietly cluster. Bisection is fixed-iteration
-(30, 90 and 24 steps in the three solvers) and hue-neutral.
+When a colour is too vivid for the screen, the engine tones it down while
+keeping it the same colour. The crude alternative, chopping off whichever red,
+green or blue value is too high, changes the colour itself. That's how a "blue"
+ends up slightly green.
 
-**`border` and `grid-dot` get contrast *windows*, not floors.** Every other pair
-in the gate table is `min` only. These two carry a `max` as well — 2.0 and 1.55
-— because a floor alone is a one-sided requirement and these elements want to be
-*only just* perceptible. Give a divider a generous contrast minimum and no
-ceiling, and the solver happily hands you a stripe; the hero's dot texture
-becomes noise. "Visible enough, and no more" needs two numbers.
+**Calculating over guessing.** A lazy generator picks random colours and retries
+until one passes. That can loop forever when nothing nearby passes. Worse, it
+quietly favours whichever colours pass most easily, so your "random" schemes
+stop being random. This engine homes in on the answer by repeatedly halving the
+range, like guessing a number between 1 and 100 by always guessing the middle.
+It always finishes in a fixed number of steps (30, 90 and 24 in the three
+places it does this) and treats every colour family equally.
+
+**Borders get a maximum and a minimum.** Every other rule says "at least
+this much contrast". Borders and the faint dot pattern behind the page header
+also have an upper limit (2.0 and 1.55). A divider should be only just visible.
+Give it a minimum and no maximum, and the engine happily hands you a thick
+stripe, and the dot pattern turns into noise.
 
 ---
 
 ## What this does NOT guarantee
 
-**Read this bit before using any of it.** This is a generator, not a theming
-system, and the gap between those two is where someone could get hurt.
+**Read this before using any of it.** This picks colours. It doesn't manage how
+a site uses them.
 
-The gate table bounds pairs of **solid** tokens. It says nothing about what
-happens at partial opacity — and at partial opacity the guarantees simply stop.
-Measured over 20,000 seeds, reproducible via `npm run test:sweep`:
+The rules only cover solid colours. Measured over 
+20,000 seeds (run `npm run test:sweep` to reproduce):
 
-| composite | result |
+| what was tested | result |
 |---|---|
-| a generated accent at **40% alpha** over its own background | under the 3:1 non-text UI floor on **78.7%** of palettes — worst case **1.75:1** |
-| accent text at 80% on a 10%-accent-tinted chip | misses **WCAG AA** on **58.9%** of palettes |
+| the highlight colour at 40% strength over its own background | below the accessibility minimum for buttons and icons (3:1) in **78.7%** of schemes, worst case **1.75:1** |
+| highlight-coloured text at 80% strength on a label lightly tinted with the same colour | below the standard accessibility level for text (4.5:1) in **58.9%** of schemes |
 
-The reason this hid for so long in the original site is instructive: that site's
-accent was hand-picked and enormous (21:1 against the background), so 40% alpha
-still cleared the floor comfortably. A *generated* accent only has to clear the
-gate table's 4.5–6.5:1, and the same utility collapses.
+Why this went unnoticed on the original site: its highlight was hand-picked and
+extremely strong (21:1 against the background), so even at 40% strength it was
+fine. A *generated* highlight only has to reach 4.5–6.5:1, and the same effect
+falls apart.
 
-**Those were fixed in the site's stylesheet, not in this engine**, with
-per-utility alpha overrides, and that was the right place: the engine picks
-colours, and these are composites of one. Nothing in here will stop you
-compositing your way below AA. `src/__tests__/limitations.test.ts` measures the
-failure rates rather than asserting they're fine — it passes when the numbers
-are bad, which is an odd test to write and the honest one.
+**I fixed those in the site's styling, not in this engine**, the engine picks colours, and these are blends of them. 
+Nothing in here will stop you blending your way into unreadable text.
+`src/__tests__/limitations.test.ts` measures how often it fails and only passes when the numbers are bad.
 
-The supported route is to not composite: `accent`-on-`surface` **is** in the
-gate table, so dropping the tint makes the same chip AA by construction.
+The safe route is not to blend. Highlight colour on a solid panel *is* covered by
+the rules, so dropping the tint makes the same label readable by design.
 
 ---
 
-## The nine token names are one site's structure
+## The nine colours suit one site
 
 ```
 bg  surface  border  text  muted  accent  accent-dim  grid-dot  success
 ```
 
-That is not a general-purpose design-token vocabulary. It is the set of things
-*one* site needed, and it shows:
+That's background, panels, borders, main text, quieter text, the highlight
+colour, a softer highlight, a dot pattern, and a status green. It isn't a
+general-purpose set. It's what *one* site needed:
 
-- **`grid-dot`** is a hero background texture. Most sites do not have a hero
-  background texture. It is in the gate table with a contrast window because
-  that site had one.
-- **`success`** is pinned to a fixed hue of **152°** and never takes the key
-  hue. It carries meaning rather than brand: an "open to work" status chip must
-  not turn red because the seed happened to land on red. If you have no status
-  colour, it is a token you are carrying for nothing.
-- There is no `warning`, no `error`, no `info`, no scale of greys — because that
-  site didn't use them.
+- **`grid-dot`** is the faint dot pattern behind that site's page header. Most
+  sites don't have one.
+- **`success`** is always green and never follows the seed. 
 
-Adapting this to another project means rewriting that list and the gate table
-beside it. That is not a small edit; the gate table is where the design lives.
+- There's no warning, error or info colour, and no range of greys.
 
 ---
 
 ## What stayed behind
 
-The site keeps the half that touches the browser, and it is a real seam rather
-than a tidy-up:
-
 | stayed in the site | why |
 |---|---|
-| `apply.ts` | the only file in the whole engine that touches `document` — writes the tokens as inline custom properties, manages a `localStorage` cache under site-specific keys |
-| `favicon.ts` | fetches one specific SVG and tints it |
-| the pre-paint `<script>` | inlined into the site's root layout to set the theme before first paint |
-| the stylesheet cross-check | `calibration.test.ts` ended by parsing the site's `globals.css` to prove the fixtures match the shipped design — there is no stylesheet here to agree with |
-
-That last one is the most valuable test in the original suite and it could not
-come. The cost is stated in the file: these fixtures are evidence for the gate
-table, but nothing in this repo proves they're still the colours a real design
-used.
+| `apply.ts` | the only file that touches the live page: it puts the colours on it and remembers your chosen theme in your browser between visits |
+| `favicon.ts` | recolours the site's small browser-tab icon |
+| a small script at the top of every page | sets the theme before the page first appears, so you never see a flash of the wrong colours |
+| the styling cross-check | `calibration.test.ts` finished by reading the site's stylesheet to prove the saved schemes matched the live design|
 
 ---
 
-## This is a snapshot, not a package
+## This is a frozen copy, not a library
 
-The site has its own copy and is not consuming this one. **The two will drift,
-and that is expected rather than neglect** — if the site's design changes, its
-copy changes and this one won't. It is not on npm and won't be. There is no
-versioning policy because there is nothing here to depend on.
-
-If something in here is useful to you, the useful thing is probably the *method*
-— calibrate your constants against a design that already works, and let the
-hand-made palette be the thing that judges the gate, not the other way round.
-Copy the file, don't install it.
+The site has its own copy and doesn't use this one. **The two might drift apart.** 
+Although I will do my best to update this repo in case I decide to make changes.
 
 ---
-
-## Running it
-
-```bash
-npm test             # 43 tests. No install. Needs Node >= 22.6 for --experimental-strip-types.
-npm run test:sweep   # the same tests over 20,000 seeds instead of 2,000
-npm run typecheck    # needs `npm install` (TypeScript + @types/node) or the nix dev shell
-nix develop          # Node 22 + tsc, if you're on Nix
-```
-
-There is no build step. The tests run straight off the TypeScript sources
-through Node's type stripping, which is why `npm test` needs nothing installed
-and why the flake provides a dev shell but no derivation for the library — there
-is nothing to compile.
-
-`src/__tests__/public-surface.test.ts` is the one test that imports through
-`src/index.ts` rather than reaching for a leaf module, so a dropped export fails
-loudly instead of quietly narrowing what this offers. Every other test imports
-leaves directly, which is how they were written in the site, where `index.ts`
-was a barrel nothing imported at all.
