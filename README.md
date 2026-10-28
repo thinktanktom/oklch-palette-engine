@@ -157,4 +157,3 @@ general-purpose set. It's what *one* site needed:
 The site has its own copy and doesn't use this one. **The two might drift apart.** 
 Although I will do my best to update this repo in case I decide to make changes.
 
----
